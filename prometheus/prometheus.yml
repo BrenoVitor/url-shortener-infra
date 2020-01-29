@@ -1,0 +1,47 @@
+global:
+  scrape_interval:     15s # By default, scrape targets every 15 seconds.
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+    monitor: 'codelab-monitor'
+
+  evaluation_interval: 10s
+rule_files:
+  - 'alert.rules'
+
+alerting:
+  alertmanagers:
+  - scheme: http
+    static_configs:
+    - targets:
+      - 'alertmanager:9093'
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  - job_name: 'node-exporter'
+    scrape_interval: 1s
+    static_configs:
+    - targets: ['node-exporter:9100']
+  - job_name: 'alertmanager'
+    scrape_interval: 1s
+    static_configs:
+    - targets: ['alertmanager:9093']
+  - job_name: 'netdata'
+    metrics_path: '/api/v1/allmetrics'
+    params:
+      format: [prometheus]
+    scrape_interval: 1s
+    honor_labels: true
+    static_configs:
+    - targets: ['netdata:19999']
+  - job_name: 'integrator-tuleap-mantis-api'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 1s
+    static_configs:
+    - targets: ['integrator-tuleap-mantis-api-1:8080','integrator-tuleap-mantis-api-2:8080','integrator-tuleap-mantis-api-3:8080']
+  - job_name: 'prometheus'
+    scrape_interval: 1s
+    static_configs:
+    - targets: ['prometheus:9090']

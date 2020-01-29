@@ -1,0 +1,220 @@
+version: '3'
+services:
+    url-shortener-client:
+        build:
+            dockerfile: ./url-shortener-client/url-shortener-client.dockerfile
+            context: .
+        image: brenovitor/url-shortener-client
+        container_name: url-shortener-client
+        hostname: url-shortener-client
+        ports:
+            - "8080:80"
+        networks: 
+            - production-network
+        depends_on: 
+            - "nginx-url-shortener-api"
+
+    nginx-url-shortener-api:
+        build:
+            dockerfile: ./nginx-url-shortener-api/nginx-url-shortener-api.dockerfile
+            context: .
+        image: brenovitor/nginx-url-shortener-api
+        container_name: nginx-url-shortener-api
+        hostname: nginx-url-shortener-api
+        ports:
+            - "8081:80"
+            - "8083:443"
+        networks:   
+            - production-network
+        depends_on: 
+            - "url-shortener-api-1"
+            - "url-shortener-api-2"
+            - "url-shortener-api-3"
+
+    url-shortener-api-1:
+        build:
+            dockerfile: ./url-shortener-api/url-shortener-api.dockerfile
+            context: .
+        image: brenovitor/url-shortener-api
+        container_name: url-shortener-api-1
+        hostname: url-shortener-api-1
+        ports:
+            - "8087:8080"
+        networks: 
+            - production-network
+
+    url-shortener-api-2:
+        build:
+            dockerfile: ./url-shortener-api/url-shortener-api.dockerfile
+            context: .
+        image: brenovitor/url-shortener-api
+        container_name: url-shortener-api-2
+        hostname: url-shortener-api-2
+        ports:
+            - "8080"
+        networks: 
+            - production-network
+
+    url-shortener-api-3:
+        build:
+            dockerfile: ./url-shortener-api/url-shortener-api.dockerfile
+            context: .
+        image: brenovitor/url-shortener-api
+        container_name: url-shortener-api-3
+        hostname: url-shortener-api-3
+        ports:
+            - "8080"
+        networks: 
+            - production-network
+
+    url-shortener-monitor:
+        build:
+            dockerfile: ./url-shortener-monitor/url-shortener-monitor.dockerfile
+            context: .
+        image: brenovitor/url-shortener-monitor
+        container_name: url-shortener-monitor
+        hostname: url-shortener-monitor
+        ports:
+            - "8082:8080"
+        networks: 
+            - production-network
+
+    netdata:
+        image: netdata/netdata
+        hostname: netdata
+        container_name: netdata
+        ports:
+          - 19999:19999
+        cap_add:
+          - SYS_PTRACE
+        security_opt:
+          - apparmor:unconfined
+        volumes:
+          - /etc/passwd:/host/etc/passwd:ro
+          - /etc/group:/host/etc/group:ro
+          - /proc:/host/proc:ro
+          - /sys:/host/sys:ro
+        networks: 
+            - production-network
+        depends_on: 
+            - "url-shortener-api-1"
+            - "url-shortener-api-2"
+            - "url-shortener-api-3"
+
+    prometheus:
+        image: prom/prometheus
+        container_name: prometheus
+        hostname: prometheus
+        ports:
+            - "9090:9090"
+        volumes:
+           - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+           - ./prometheus/alert.rules:/etc/prometheus/alert.rules
+        networks: 
+            - production-network
+        depends_on: 
+            - "url-shortener-api-1"
+            - "url-shortener-api-2"
+            - "url-shortener-api-3"
+            - "node-exporter"
+            - "alertmanager"
+
+    node-exporter:
+        image: linuxtips/node-exporter_alpine
+        hostname: node-exporter
+        volumes:
+          - /proc:/usr/proc
+          - /sys:/usr/sys
+          - /:/rootfs
+        networks:
+          - production-network
+        ports:
+          - 9100:9100
+
+    alertmanager:
+        image: prom/alertmanager
+        container_name: alertmanager
+        hostname: alertmanager
+        volumes:
+           - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+        ports:
+            - "9093:9093"
+        networks: 
+            - production-network
+
+    grafana:
+        image: grafana/grafana
+        container_name: grafana
+        hostname: grafana
+        ports:
+           - "3000:3000"
+        volumes:
+           - ./grafana:/var/lib/grafana
+        networks: 
+            - production-network
+        depends_on: 
+          - "prometheus"
+
+    mongo:
+        image: mongo:3
+        container_name: mongo
+        hostname: mongo
+        ports:
+            - 27017:27017
+        networks: 
+            - production-network
+        depends_on: 
+            - "prometheus"
+
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.6.1
+        container_name: elasticsearch
+        hostname: elasticsearch
+        environment:
+           - http.host=0.0.0.0
+           - transport.host=0.0.0.0
+           - network.host=0.0.0.0
+           - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+        ulimits:
+           memlock:
+             soft: -1
+             hard: -1
+        volumes:
+           - ./elasticsearch:/usr/share/elasticsearch/data
+        ports:
+           - 9200:9200
+           - 9300:9300
+        networks: 
+            - production-network
+        depends_on: 
+            - "mongo"
+
+    graylog:
+        image: graylog/graylog:3.1
+        container_name: graylog
+        hostname: graylog
+        ports:
+           - 9000:9000
+           - 514:514/tcp
+           - 514:514/udp 
+           - 12201:12201/tcp
+           - 12201:12201/udp
+        environment:
+           - GRAYLOG_HTTP_EXTERNAL_URI=http://0.0.0.0:9000/
+        volumes:
+           - ./graylog:/usr/share/graylog/data/journal:rw
+        links:
+           - mongo
+           - elasticsearch
+        networks: 
+            - production-network
+        depends_on: 
+          - "elasticsearch"
+          - "mongo"
+
+
+
+
+networks: 
+    production-network:
+        driver: bridge
